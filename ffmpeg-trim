@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+# License: GNU Affero General Public License Version 3 (GNU AGPLv3), (c) 2023, Marc Gilligan <marcg@ulfnic.com>
+[[ $DEBUG ]] && set -x
+set -o errexit
+
+
+
+help_doc() {
+	cat <<-'HelpDoc'
+
+		ffmpeg-trim
+		  -s|--start-time (-)TIME
+		  -f|--finish-time (-|+)TIME
+		  -i|--input-file INPUT_FILE    - for stdin
+		  -c|--clobber
+		  -h|--help
+		  OUTPUT_FILE                   - for stdout
+
+
+		TIME FORMAT
+
+		  -|+
+		    --start-time|--finish-time
+		       TIME  absolute time from video beginning
+
+		    --start-time
+		      -TIME  subtract from --finish-time
+
+		    --finish-time
+		      -TIME  subtract from video duration
+		      +TIME  add to --start-time
+
+		  TIME
+		        S  Seconds
+		      M:S  Minutes:Seconds
+		    H:M:S  Hours:Minutes:Seconds
+
+
+		EXAMPLES
+
+		  # Trim the first 10 seconds and everything after 1 hour
+		  ffmpeg-trim -s 10 -f 1:0:0 -i input.mp4 output.mp4
+
+		  # Trim the first 10 seconds and everything after the trim beyond 5 seconds
+		  ffmpeg-trim -s 10 -f +5 -i input.mp4 output.mp4
+
+		  # Trim the last 10 seconds and everything before the trim beyond 5 seconds
+		  ffmpeg-trim -s -5 -f -10 -i input.mp4 output.mp4
+
+	HelpDoc
+	[[ $1 ]] && exit "$1"
+}
+
+
+
+print_stderr() {
+	if [[ $1 == '0' ]]; then
+		[[ $2 ]] && printf "$2" "${@:3}" 1>&2 || :
+	else
+		[[ $2 ]] && printf '%s'"$2" "ERROR: ${0##*/}, " "${@:3}" 1>&2 || :
+		exit "$1"
+	fi
+}
+
+
+
+# Check dependencies
+type ffmpeg bc 1> /dev/null || print_stderr 1 '%s\n' 'one or more missing dependencies'
+
+
+
+start_time=
+finish_time=
+input_file=
+output_file=
+ffmpeg_args=()
+calc_finish_time_from_end=
+calc_finish_time_forward_from_start_time=
+calc_start_time_backward_from_end_time=
+while [[ $1 ]]; do
+	case $1 in
+		'--start-time'|'-s')
+			shift; start_time=$1 ;;
+		'--finish-time'|'-f')
+			shift; finish_time=$1 ;;
+		'--input-file'|'-i')
+			shift; input_file=$1
+			[[ $input_file == '-' ]] && input_file='/dev/fd/0'
+			;;
+		'--clobber'|'-c')
+			ffmpeg_args+=('-y') ;;
+		'--help'|'-h')
+			help_doc 0 ;;
+		'--')
+			shift; break ;;
+		'-'?*)
+			print_stderr 1 '%s\n' 'unrecognized parameter: '"$1" ;;
+		*)
+			output_file=$1
+			[[ $output_file == '-' ]] && output_file='/dev/fd/1'
+	esac
+	shift
+done
+
+if [[ $1 ]]; then
+	output_file=$1
+	shift
+	[[ $1 ]] && print_stderr 1 '%s\n' 'unrecognized parameter: '"$1"
+fi
+
+
+
+[[ $input_file ]] || print_stderr 1 '%s\n' 'no input file provided'
+[[ $input_file == '/dev/fd/0']] || [[ -f $input_file ]] || print_stderr 1 '%s\n' 'input file not found'
+[[ $output_file ]] || print_stderr 1 '%s\n' 'no output file provided'
+
+
+
+time_to_sec() {
+	local h m s time_arr_len
+
+	IFS=':' time_arr=($1)
+	time_arr_len=${#time_arr[@]}
+	(( time_arr_len >= 3 )) && h=${time_arr[-3]} || h=0
+	(( time_arr_len >= 2 )) && m=${time_arr[-2]} || m=0
+	(( time_arr_len >= 1 )) && s=${time_arr[-1]} || s=0
+
+	IFS='.' seconds_arr=($s)
+	s=${seconds_arr[0]}
+	ms=${seconds_arr[1]:-0}
+
+	time_to_sec__out=$(( s + ( ( m + ( h * 60 ) ) * 60 ) ))".${ms}"
+}
+
+
+
+input_duration_sec=$( ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$input_file" )
+
+
+
+# Calculate start time
+if [[ $start_time ]]; then
+
+	if [[ ${start_time:0:1} == '-' ]]; then
+		start_time=${start_time:1}
+		calc_start_time_backward_from_end_time=1
+	fi
+
+	time_to_sec "$start_time"
+	start_sec=$time_to_sec__out
+else
+	start_sec=0
+fi
+
+
+
+# Calculate finish time
+if [[ $finish_time ]]; then
+
+	if [[ ${finish_time:0:1} == '-' ]]; then
+		finish_time=${finish_time:1}
+		calc_finish_time_from_end=1
+	elif [[ ${finish_time:0:1} == '+' ]]; then
+		finish_time=${finish_time:1}
+		calc_finish_time_forward_from_start_time=1
+	fi
+
+	time_to_sec "$finish_time"
+	finish_sec=$time_to_sec__out
+
+	if [[ $calc_finish_time_from_end ]]; then
+		finish_sec=$(bc <<< "${input_duration_sec} - ${finish_sec}")
+		[[ ${finish_sec:0:1} == '.' ]] && finish_sec='0'$finish_sec
+	elif [[ $calc_finish_time_forward_from_start_time ]]; then
+		finish_sec=$(bc <<< "${start_sec} + ${finish_sec}")
+		[[ ${finish_sec:0:1} == '.' ]] && finish_sec='0'$finish_sec
+	fi
+
+else
+	finish_sec=$input_duration_sec
+fi
+
+
+
+# Re-calculate start time
+if [[ $calc_finish_time_from_end ]]; then
+	start_sec=$(bc <<< "${finish_sec} - ${start_sec}")
+	[[ ${start_sec:0:1} == '.' ]] && start_sec='0'$start_sec
+fi
+
+
+
+duration_sec=$(bc <<< "${finish_sec} - ${start_sec}")
+# Enforce a 0 before the decimal for fractions so the number is accepted by ffmpeg
+[[ ${duration_sec:0:1} == '.' ]] && duration_sec='0'$duration_sec
+
+
+
+echo Running: ffmpeg "${ffmpeg_args[@]}" -ss "$start_sec" -t "$duration_sec" -i "$input_file" "$output_file"
+ffmpeg "${ffmpeg_args[@]}" -ss "$start_sec" -t "$duration_sec" -i "$input_file" "$output_file"
+
+
+
