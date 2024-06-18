@@ -64,8 +64,22 @@ print_stderr() {
 
 
 
-# Check dependencies
-type ffmpeg bc 1> /dev/null || print_stderr 1 '%s\n' 'one or more missing dependencies'
+# Check dependencies and functionalize arithmetic
+type ffmpeg 1> /dev/null
+
+if type [: &> /dev/null; then
+	calc_solution() {
+		SOLUTION=$([: "$1" :])
+	}
+
+elif type bc &> /dev/null; then
+	calc_solution() {
+		SOLUTION=$(bc <<< "$1")
+	}
+
+else
+	print_stderr 1 '%s\n' 'missing dependency, [: or bc'
+fi
 
 
 
@@ -169,10 +183,12 @@ if [[ $finish_time ]]; then
 	finish_sec=$time_to_sec__out
 
 	if [[ $calc_finish_time_from_end ]]; then
-		finish_sec=$(bc <<< "${input_duration_sec} - ${finish_sec}")
+		calc_solution "${input_duration_sec} - ${finish_sec}"
+		finish_sec=$SOLUTION
 		[[ ${finish_sec:0:1} == '.' ]] && finish_sec='0'$finish_sec
 	elif [[ $calc_finish_time_forward_from_start_time ]]; then
-		finish_sec=$(bc <<< "${start_sec} + ${finish_sec}")
+		calc_solution "${start_sec} + ${finish_sec}"
+		finish_sec=$SOLUTION
 		[[ ${finish_sec:0:1} == '.' ]] && finish_sec='0'$finish_sec
 	fi
 
@@ -184,13 +200,15 @@ fi
 
 # Re-calculate start time
 if [[ $calc_finish_time_from_end ]]; then
-	start_sec=$(bc <<< "${finish_sec} - ${start_sec}")
+	calc_solution "${finish_sec} - ${start_sec}"
+	start_sec=$SOLUTION
 	[[ ${start_sec:0:1} == '.' ]] && start_sec='0'$start_sec
 fi
 
 
 
-duration_sec=$(bc <<< "${finish_sec} - ${start_sec}")
+calc_solution "${finish_sec} - ${start_sec}"
+duration_sec=$SOLUTION
 # Enforce a 0 before the decimal for fractions so the number is accepted by ffmpeg
 [[ ${duration_sec:0:1} == '.' ]] && duration_sec='0'$duration_sec
 
