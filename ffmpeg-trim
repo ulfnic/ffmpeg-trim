@@ -124,9 +124,22 @@ fi
 
 
 
+# Validate and finalize paths
 [[ $input_file ]] || print_stderr 1 '%s\n' 'no input file provided'
 [[ $input_file == '/dev/fd/0' ]] || [[ -f $input_file ]] || print_stderr 1 '%s\n' 'input file not found'
-[[ $output_file ]] || print_stderr 1 '%s\n' 'no output file provided'
+
+
+
+# If no output path is given, generate one from input filename
+if [[ ! $output_file ]]; then
+	input_filename=${input_file##*/}
+	[[ $input_filename == *'.'* ]] || print_stderr 1 '%s\n' 'output file required if input file has no extension'
+
+	input_file_ext=${input_filename##*.}
+	index_of_last_dot=$(( ${#input_filename} - ${#input_file_ext} - 1 ))
+
+	output_file=${input_filename:0:index_of_last_dot}'_edit'${input_filename:index_of_last_dot}
+fi
 
 
 
