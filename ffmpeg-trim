@@ -8,42 +8,41 @@ help_doc() {
 	cat <<-'HelpDoc'
 
 		ffmpeg-trim
-		  -s|--start-time (-)TIME
-		  -f|--finish-time (-|+)TIME
-		  -i|--input-file INPUT_FILE    - for stdin
+		  -s|--start-time <START TIME>
+		  -f|--finish-time <FINISH TIME>
+		  -i|--input-file <INPUT FILE>
 		  -c|--clobber
 		  -h|--help
-		  OUTPUT_FILE                   - for stdout
+		  <OUTPUT FILE>
 
+		FILE
+		  A file compatible with ffmpeg as an input or output.
+		  - is an alias for /dev/fd/0 for INPUT FILE and /dev/fd/1 for OUTPUT FILE.
 
-		TIME FORMAT
+		  INPUT FILE is required. If no OUTPUT FILE is provided it becomes the filename
+		  portion of INPUT FILE adding "_edit" before the extension. Ex: myvid_edit.mp4
 
-		  -|+
-		    --start-time|--finish-time
-		       TIME  absolute time from video beginning
+		TIME formats
+		  SECONDS
+		  MINUTES:SECONDS
+		  HOURS:MINUTES:SECONDS
 
-		    --start-time
-		      -TIME  subtract from --finish-time
+		TIME relativity
+		  By default TIME is the duration from the beginning of the file.
+		  Prepending a - or + changes the origin and/or direction of TIME.
 
-		    --finish-time
-		      -TIME  subtract from video duration
-		      +TIME  add to --start-time
-
-		  TIME
-		        S  Seconds
-		      M:S  Minutes:Seconds
-		    H:M:S  Hours:Minutes:Seconds
-
+		  -START TIME   Start at TIME subtracted from FINISH TIME
+		  -FINISH TIME  Finish at TIME subtracted from file duration
+		  +FINISH TIME  Finish at TIME added to START TIME
 
 		EXAMPLES
+		  # Remove the first 10 seconds and everything after 1 hour and 3 minutes
+		  ffmpeg-trim -s 10 -f 1:3:0 -i input.mp4 output.mp4
 
-		  # Trim the first 10 seconds and everything after 1 hour
-		  ffmpeg-trim -s 10 -f 1:0:0 -i input.mp4 output.mp4
-
-		  # Trim the first 10 seconds and everything after the trim beyond 5 seconds
+		  # Remove the first 10 seconds, then everything 5 seconds after what was removed
 		  ffmpeg-trim -s 10 -f +5 -i input.mp4 output.mp4
 
-		  # Trim the last 10 seconds and everything before the trim beyond 5 seconds
+		  # Remove the last 10 seconds, then everything 5 seconds before what was removed
 		  ffmpeg-trim -s -5 -f -10 -i input.mp4 output.mp4
 
 	HelpDoc
