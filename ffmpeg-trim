@@ -4,7 +4,6 @@
 set -o errexit
 
 
-
 help_doc() {
 	cat <<-'HelpDoc'
 
@@ -157,7 +156,6 @@ input_duration_sec=$( ffprobe -v error -show_entries format=duration -of default
 
 # Calculate start time
 if [[ $start_time ]]; then
-
 	if [[ ${start_time:0:1} == '-' ]]; then
 		start_time=${start_time:1}
 		calc_start_time_backward_from_end_time=1
@@ -165,6 +163,7 @@ if [[ $start_time ]]; then
 
 	time_to_sec "$start_time"
 	start_sec=$time_to_sec__out
+
 else
 	start_sec=0
 fi
@@ -173,10 +172,10 @@ fi
 
 # Calculate finish time
 if [[ $finish_time ]]; then
-
 	if [[ ${finish_time:0:1} == '-' ]]; then
 		finish_time=${finish_time:1}
 		calc_finish_time_from_end=1
+
 	elif [[ ${finish_time:0:1} == '+' ]]; then
 		finish_time=${finish_time:1}
 		calc_finish_time_forward_from_start_time=1
@@ -189,6 +188,7 @@ if [[ $finish_time ]]; then
 		calc_solution "${input_duration_sec} - ${finish_sec}"
 		finish_sec=$SOLUTION
 		[[ ${finish_sec:0:1} == '.' ]] && finish_sec='0'$finish_sec
+
 	elif [[ $calc_finish_time_forward_from_start_time ]]; then
 		calc_solution "${start_sec} + ${finish_sec}"
 		finish_sec=$SOLUTION
@@ -212,6 +212,7 @@ fi
 
 calc_solution "${finish_sec} - ${start_sec}"
 duration_sec=$SOLUTION
+
 # Enforce a 0 before the decimal for fractions so the number is accepted by ffmpeg
 [[ ${duration_sec:0:1} == '.' ]] && duration_sec='0'$duration_sec
 
