@@ -86,9 +86,6 @@ finish_time=
 input_file=
 output_file=
 ffmpeg_args=()
-calc_finish_time_from_end=
-calc_finish_time_forward_from_start_time=
-calc_start_time_backward_from_end_time=
 [[ $1 ]] || help_doc 1
 while [[ $1 ]]; do
 	case $1 in
@@ -143,6 +140,8 @@ fi
 
 
 time_to_sec() {
+	TIME_TO_SEC__OUT=
+
 	local IFS h m s time_arr_len
 
 	IFS=':'
@@ -157,76 +156,61 @@ time_to_sec() {
 	s=${seconds_arr[0]}
 	ms=${seconds_arr[1]:-0}
 
-	time_to_sec__out=$(( s + ( ( m + ( h * 60 ) ) * 60 ) ))".${ms}"
+	TIME_TO_SEC__OUT=$(( s + ( ( m + ( h * 60 ) ) * 60 ) ))".${ms}"
 }
 
 
 
+# Define video duration
 input_duration_sec=$( ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$input_file" )
 
 
 
-# Calculate start time
-if [[ $start_time ]]; then
-	if [[ ${start_time:0:1} == '-' ]]; then
-		start_time=${start_time:1}
-		calc_start_time_backward_from_end_time=1
-	fi
-
-	time_to_sec "$start_time"
-	start_sec=$time_to_sec__out
-
-else
+# Format start and finish time into seconds
+if [[ ! $start_time ]]; then
 	start_sec=0
-fi
-
-
-
-# Calculate finish time
-if [[ $finish_time ]]; then
-	if [[ ${finish_time:0:1} == '-' ]]; then
-		finish_time=${finish_time:1}
-		calc_finish_time_from_end=1
-
-	elif [[ ${finish_time:0:1} == '+' ]]; then
-		finish_time=${finish_time:1}
-		calc_finish_time_forward_from_start_time=1
-	fi
-
-	time_to_sec "$finish_time"
-	finish_sec=$time_to_sec__out
-
-	if [[ $calc_finish_time_from_end ]]; then
-		calc_solution "${input_duration_sec} - ${finish_sec}"
-		finish_sec=$SOLUTION
-		[[ ${finish_sec:0:1} == '.' ]] && finish_sec='0'$finish_sec
-
-	elif [[ $calc_finish_time_forward_from_start_time ]]; then
-		calc_solution "${start_sec} + ${finish_sec}"
-		finish_sec=$SOLUTION
-		[[ ${finish_sec:0:1} == '.' ]] && finish_sec='0'$finish_sec
-	fi
-
 else
+	time_to_sec "${start_time#*-}"
+	start_sec=$TIME_TO_SEC__OUT
+fi
+
+if [[ ! $finish_time ]]; then
 	finish_sec=$input_duration_sec
+else
+	time_to_sec "${finish_time#*-}"
+	finish_sec=$TIME_TO_SEC__OUT
 fi
 
 
 
-# Re-calculate start time
-if [[ $calc_finish_time_from_end ]]; then
+# Perform relative time conversions
+if [[ $finish_time == '-'* ]]; then
+	calc_solution "${input_duration_sec} - ${finish_sec}"
+	finish_sec=$SOLUTION
+fi
+
+if [[ $start_time == '-'* ]]; then
+	[[ $finish_time == '+'* ]] && print_stderr 1 '%s\n' 'times cannot be relative to each other: '"$start_time $finish_time"
 	calc_solution "${finish_sec} - ${start_sec}"
 	start_sec=$SOLUTION
-	[[ ${start_sec:0:1} == '.' ]] && start_sec='0'$start_sec
+fi
+
+if [[ $finish_time == '+'* ]]; then
+	calc_solution "${start_sec} + ${finish_sec}"
+	finish_sec=$SOLUTION
 fi
 
 
 
+# Define duration of clip
 calc_solution "${finish_sec} - ${start_sec}"
 duration_sec=$SOLUTION
 
-# Enforce a 0 before the decimal for fractions so the number is accepted by ffmpeg
-[[ ${duration_sec:0:1} == '.' ]] && duration_sec='0'$duration_sec
+
+
+# Enforce at least one whole digit for ffmpeg syntax
+[[ ${start_sec:0:1} == '.' ]] && start_sec='0'$start_sec
+[[ ${duration_sec:0:1} == '.' ]] && duration_sec='0'$finish_sec
 
 
 
